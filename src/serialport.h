@@ -35,14 +35,16 @@ public:
 
 signals:
     void readySendChanged();
-    void weightChannelInfoRecieved(const Mertech::WeightChannel&);
+    void weightChannelInfoRecieved(Mertech::WeightChannel&);
 
 private slots:
     void messageTimedout();
 
 private:
+    void signal(Packet::MessageType);
+    bool writeInternal(const QByteArray&);
     void setReadySend(bool);
-    void handleData(const QByteArray&);
+    void handleData();
 
     DECLARE_PIMPL
 };

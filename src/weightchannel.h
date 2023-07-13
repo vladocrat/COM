@@ -7,7 +7,7 @@ namespace Mertech
 
 struct WeightChannel
 {
-    uint32_t weight { 0 };
+    float weight { 0 };
     uint16_t tare { 0 };
     uint16_t state { 0 };
 

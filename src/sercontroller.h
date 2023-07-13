@@ -16,6 +16,8 @@ public:
     SerController(const QString& name = "", QSerialPort::BaudRate rate = QSerialPort::Baud115200);
     virtual ~SerController() noexcept;
 
+
+    bool open();
     bool getWeight() noexcept;
 
     const SerialPort* port() const noexcept;
