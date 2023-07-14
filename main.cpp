@@ -6,8 +6,10 @@
 
 #include <bitset>
 
+#ifndef TEST
 #include "packet.h"
 #include "sercontroller.h"
+#endif
 
 #ifdef TEST
 #include "test_packet.h"
@@ -47,7 +49,6 @@ int main(int argc, char *argv[])
         qDebug() << "failed to get weight";
     }
 #endif
-
 
     return a.exec();
 }
