@@ -260,7 +260,6 @@ void SerialPort::handleData()
             stream >> state;
             qDebug() << "state " << state;
 
-            float weight = 0.0f;
             uint8_t weightBytes[4];
 
             for (int i = 0; i < 4; i++)
@@ -270,35 +269,9 @@ void SerialPort::handleData()
                 weightBytes[i] = elem;
             }
 
-//            uint8_t bytes[] = { 0x59, 0x01, 0x00, 0x00 };
-
-//                uint32_t value = 0;
-//                for (int i = 0; i < 4; i++) {
-//                    value <<= 8;
-//                    value |= bytes[i];
-//                }
-
-//                // Calculate the float value
-//                float floatValue = static_cast<float>(value) / 1000.0;
-
-//               qDebug() << "Float Value: " << floatValue; // Output: 0.319
-
-            for (int i = 0; i < 4; i++)
-            {
-                qDebug() << hex << weightBytes[i];
-            }
-
             uint32_t value = 0;
-            for (int i = 0; i < 4; i++)
-            {
-                value <<= 8;
-                value |= weightBytes[i];
-                qDebug() << "new value: " << value;
-            }
-
-            std::memcpy(&weight, &value, sizeof(float));
-            weight = ((float)value / 1000);
-            qDebug() << static_cast<float>(value) / 1000.0f;
+            std::memcpy(&value, weightBytes, sizeof(uint32_t));
+            float weight = (value / 1000.0f);
 
             uint16_t tare;
             stream >> tare;
