@@ -300,7 +300,7 @@ void SerialPort::handleData()
 
             stream >> errorCode;
 
-            auto result = errorCode != 0;
+            auto result = errorCode == 0;
 
             emit tareSet(result);
             break;
@@ -311,7 +311,7 @@ void SerialPort::handleData()
 
             stream >> errorCode;
 
-            auto result = errorCode != 0;
+            auto result = errorCode == 0;
 
             emit zeroSet(result);
             break;
