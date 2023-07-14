@@ -43,9 +43,11 @@ QByteArray Packet::serialize() noexcept
 {
     QDataStream stream(&impl().data, QIODevice::WriteOnly);
 
-    impl().length = sizeof(uint8_t) + impl().params.length();
+    impl().length = static_cast<uint8_t>(sizeof(uint8_t) + impl().params.length());
 
-    stream << impl().messageType << impl().length << impl().command;
+    stream << static_cast<uint8_t>(impl().messageType);
+    stream << impl().length;
+    stream << impl().command;
 
     for (const auto& param : qAsConst(impl().params))
     {

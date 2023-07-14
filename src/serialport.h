@@ -43,8 +43,10 @@ private slots:
     void messageTimedout();
 
 private:
+    void signal(Packet::MessageType);
+    bool writeInternal(const QByteArray&);
     void setReadySend(bool);
-    void handleData(const QByteArray&);
+    void handleData();
 
     DECLARE_PIMPL
 };

@@ -37,10 +37,10 @@ SerController::SerController(const QString& name, QSerialPort::BaudRate rate)
     impl().m_ser.setPortName(name);
     impl().m_ser.setPullingRate(rate);
 
-    QObject::connect(&impl().m_ser, &SerialPort::weightChannelInfoRecieved, [](const WeightChannel& channel)
+    QObject::connect(&impl().m_ser, &SerialPort::weightChannelInfoRecieved, [](WeightChannel& channel)
     {
         qDebug() << "data recieved";
-        qDebug() << hex << channel.weight;
+        qDebug() << channel.weight;
         qDebug() << channel.tare;
     });
 }
@@ -48,6 +48,11 @@ SerController::SerController(const QString& name, QSerialPort::BaudRate rate)
 SerController::~SerController() noexcept
 {
 
+}
+
+bool SerController::open() noexcept
+{
+    return impl().m_ser.open(QIODevice::ReadWrite);
 }
 
 bool SerController::getWeight() noexcept

@@ -12,68 +12,52 @@ namespace Mertech
 
 namespace Constants
 {
-static const uint32_t TIMEOUT = 1000; // in ms
+static const uint32_t TIMEOUT = 5000; // in ms
 } // Constants
 
 struct SerialPort::impl_t
 {
     QSerialPort m_ser;
     int32_t m_packageSize { -1 };
-    bool m_readySend { false };
+    bool m_readySend { true };
     QTimer m_timeoutTimer;
     bool m_firstMessage { true };
+    QByteArray m_lastMessge;
 };
 
 SerialPort::SerialPort()
 {
     createImpl();
 
+    impl().m_ser.setDataBits(QSerialPort::Data8);
+    impl().m_ser.setParity(QSerialPort::NoParity);
+    impl().m_ser.setStopBits(QSerialPort::OneStop);
+    impl().m_ser.setFlowControl(QSerialPort::NoFlowControl);
+
     QObject::connect(&impl().m_ser, &QSerialPort::errorOccurred, [](QSerialPort::SerialPortError error)
     {
         qDebug() << error;
     });
 
+    QObject::connect(&impl().m_ser, &QSerialPort::bytesWritten, [this](uint64_t bytes)
+    {
+        qDebug() << "bytes written: " << bytes;
+
+        if (!impl().m_ser.waitForReadyRead(Constants::TIMEOUT))
+        {
+            qDebug() << "failed to wait";
+        }
+
+    });
+
     QObject::connect(&impl().m_ser, &QSerialPort::readyRead, [this]()
     {
         qDebug() << "ReadyRead";
-
-        QDataStream stream(&impl().m_ser);
-
-        if ((impl().m_ser.bytesAvailable() >= sizeof(uint8_t)) && impl().m_packageSize == -1)
-        {
-            stream >> impl().m_packageSize;
-        }
-        else
-        {
-            return;
-        }
-
-        if (impl().m_ser.bytesAvailable() < impl().m_packageSize) {
-            return;
-        }
-
-        QByteArray data;
-        stream >> data;
-        impl().m_packageSize = -1;
-        handleData(data);
+        qDebug() << impl().m_ser.bytesAvailable();
+        //auto buffer = impl().m_ser.readAll();
+        //qDebug() << buffer;
+        handleData();
     });
-
-    if (impl().m_firstMessage)
-    {
-        QByteArray arr;
-        QDataStream stream(&arr, QIODevice::WriteOnly);
-        stream << Packet::MessageType::ENQ;
-
-        QObject::connect(&impl().m_timeoutTimer, &QTimer::timeout, this, &SerialPort::messageTimedout);
-        impl().m_timeoutTimer.setSingleShot(true);
-        impl().m_timeoutTimer.setInterval(Constants::TIMEOUT);
-        impl().m_timeoutTimer.start();
-
-        if (impl().m_ser.write(arr) != -1)
-        {
-            qDebug() << "failed to create connection to the port";
-        }
-    }
 }
 
 SerialPort::~SerialPort()
@@ -95,23 +79,18 @@ const bool SerialPort::open(QIODevice::OpenMode mode) noexcept
 }
 
 const bool SerialPort::write(const QByteArray& data) noexcept
-{   
+{
+    qDebug() << Q_FUNC_INFO;
+
+    impl().m_lastMessge = data;
+
     if (impl().m_firstMessage)
     {
-        qDebug() << "something went wrong";
-        return false;
+        qDebug() << "first msg";
+        signal(Packet::MessageType::ENQ);
     }
 
-    auto ret = impl().m_ser.write(data) != -1;
-
-    if (ret) {
-        QObject::connect(&impl().m_timeoutTimer, &QTimer::timeout, this, &SerialPort::messageTimedout);
-        impl().m_timeoutTimer.setSingleShot(true);
-        impl().m_timeoutTimer.setInterval(Constants::TIMEOUT);
-        impl().m_timeoutTimer.start();
-    }
-
-    return ret;
+    return writeInternal(data);
 }
 
 void SerialPort::setPortName(const QString& name)
@@ -153,7 +132,35 @@ const bool SerialPort::readySend() const noexcept
 void SerialPort::messageTimedout()
 {
     //!TODO
-    Q_UNIMPLEMENTED();
+    qDebug() << Q_FUNC_INFO;
+
+    if (!write(impl().m_lastMessge))
+    {
+        qDebug() << "Failed to write after message timedout";
+        return;
+    }
+}
+
+void SerialPort::signal(Packet::MessageType type)
+{
+    QByteArray arr;
+    QDataStream stream(&arr, QIODevice::WriteOnly);
+    stream << static_cast<uint8_t>(type);
+    writeInternal(arr);
+}
+
+bool SerialPort::writeInternal(const QByteArray& arr)
+{
+    qDebug() << Q_FUNC_INFO;
+
+    auto ret =  impl().m_ser.write(arr) != -1;
+
+    if (!impl().m_ser.flush())
+    {
+        qDebug() << "failed to flush";
+    }
+
+    return ret;
 }
 
 void SerialPort::setReadySend(bool val)
@@ -167,74 +174,149 @@ void SerialPort::setReadySend(bool val)
     emit readySendChanged();
 }
 
-void SerialPort::handleData(const QByteArray& msg)
+void SerialPort::handleData()
 {
-    if (impl().m_timeoutTimer.isActive())
-    {
-        impl().m_timeoutTimer.stop();
-    }
+    QDataStream stream(&impl().m_ser);
+    uint8_t cmd;
 
-    //auto pkt = Packet::deserialize(msg);
-    QDataStream stream(msg);
-    uint8_t messageType;
-    uint8_t length { 0 };
-    uint8_t command { 0 };
-    uint8_t checksum { 0 };
-    QVector<uint8_t> params;
+    //! readsize
+    auto command = (char*)&cmd;
+    int8_t dataLeft = sizeof(uint8_t);
+    int32_t read { -1 };
 
-    stream >> messageType;
+    do {
+       read = impl().m_ser.read(command, dataLeft);
 
-    switch (messageType)
+       if (read > 0)
+       {
+           command += read;
+           dataLeft -= read;
+       }
+    } while (dataLeft > 0);
+
+    qDebug() << hex << cmd;
+
+    //! readdata
+    switch (cmd)
     {
-    case Packet::MessageType::ACK:
+    case Packet::ACK:
     {
-        if (impl().m_firstMessage)
+        qDebug() << "recieved ACK";
+        setReadySend(false);
+
+        if (impl().m_ser.bytesAvailable() > 0)
         {
-            qDebug() << "connection has successfully been established";
-            setReadySend(true);
-            return;
+           handleData();
         }
 
-        qDebug() << "message was recieved";
-        setReadySend(false);
-        impl().m_timeoutTimer.start();
-        break;
+        return;
     }
-    case Packet::MessageType::NAK:
+    case Packet::NAK:
     {
-        qDebug() << "error while recieving message";
-        setReadySend(true);
-        break;
-    }
-    case Packet::MessageType::STX:
-    {
-        qDebug() << "regular meesage";
-
+        qDebug() << "recieved NAK";
         setReadySend(true);
 
+        if (impl().m_ser.bytesAvailable() > 0)
+        {
+            handleData();
+        }
+
+        break;
+    }
+    case Packet::STX:
+    {
+        qDebug() << "recieved STX";
+        read = 0;
+        uint8_t length;
         stream >> length;
-        stream >> command;
+        qDebug() << length;
 
-        switch (command)
+        length++; //+ 1 is checksum
+        auto data = new char[length];
+
+        do {
+          int32_t needed = length - read;
+          char* target = data + read;
+          read += impl().m_ser.read(target, needed);
+        } while ((read - length) != 0);
+
+        QByteArray msg(data, length + 1);
+        qDebug() << msg;
+        QDataStream stream(msg);
+
+        uint8_t action;
+        stream >> action;
+        qDebug() << action;
+
+        switch (action)
         {
         case Protocol::Command::WEIGHT_CHANNEL_STATE:
         {
-            uint8_t errorCode { 0 };
-            uint16_t state { 0 };
-            uint32_t weight { 0 };
-            uint16_t tare { 0 };
-            uint8_t reserved { 0 };
+            uint8_t error;
+            stream >> error;
+            qDebug() << "error " << error;
 
-            stream >> errorCode;
+            uint16_t state;
             stream >> state;
-            stream >> weight;
+            qDebug() << "state " << state;
+
+            float weight = 0.0f;
+            uint8_t weightBytes[4];
+
+            for (int i = 0; i < 4; i++)
+            {
+                uint8_t elem;
+                stream >> elem;
+                weightBytes[i] = elem;
+            }
+
+//            uint8_t bytes[] = { 0x59, 0x01, 0x00, 0x00 };
+
+//                uint32_t value = 0;
+//                for (int i = 0; i < 4; i++) {
+//                    value <<= 8;
+//                    value |= bytes[i];
+//                }
+
+//                // Calculate the float value
+//                float floatValue = static_cast<float>(value) / 1000.0;
+
+//               qDebug() << "Float Value: " << floatValue; // Output: 0.319
+
+            for (int i = 0; i < 4; i++)
+            {
+                qDebug() << hex << weightBytes[i];
+            }
+
+            uint32_t value = 0;
+            for (int i = 0; i < 4; i++)
+            {
+                value <<= 8;
+                value |= weightBytes[i];
+                qDebug() << "new value: " << value;
+            }
+
+            std::memcpy(&weight, &value, sizeof(float));
+            weight = ((float)value / 1000);
+            qDebug() << static_cast<float>(value) / 1000.0f;
+
+            uint16_t tare;
             stream >> tare;
+            qDebug() << "tare " << tare;
+
+            uint8_t reserved;
             stream >> reserved;
+            qDebug() << "reserved " << reserved;
+
+            uint8_t checksum;
+            stream >> checksum;
+
+            qDebug() << "expected: " << checksum;
 
             WeightChannel channel;
-            channel.weight = weight;
             channel.state = state;
             channel.tare = tare;
+            channel.weight = weight;
 
             emit weightChannelInfoRecieved(channel);
             break;
@@ -267,9 +349,8 @@ void SerialPort::handleData(const QByteArray& msg)
 
         break;
     }
-    default:
-        Q_UNREACHABLE();
-    };
-}
+    }
+} // SerialPort
+
 
 } // Mertech

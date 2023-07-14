@@ -20,6 +20,8 @@ public:
     [[nodiscard]] bool setZero() noexcept;
     [[nodiscard]] bool setTare() noexcept;
 
+    [[nodiscard]] bool open() noexcept;
+
     const SerialPort* port() const noexcept;
 
 private:
