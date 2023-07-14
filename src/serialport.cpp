@@ -241,12 +241,24 @@ void SerialPort::handleData(const QByteArray& msg)
         }
         case Protocol::Command::SET_TARE:
         {
-            Q_UNIMPLEMENTED();
+            uint8_t errorCode { 0 };
+
+            stream >> errorCode;
+
+            auto result = errorCode != 0;
+
+            emit tareSet(result);
             break;
         }
         case Protocol::Command::SET_ZERO:
         {
-            Q_UNIMPLEMENTED();
+            uint8_t errorCode { 0 };
+
+            stream >> errorCode;
+
+            auto result = errorCode != 0;
+
+            emit zeroSet(result);
             break;
         }
         default:

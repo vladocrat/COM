@@ -36,6 +36,8 @@ public:
 signals:
     void readySendChanged();
     void weightChannelInfoRecieved(const Mertech::WeightChannel&);
+    void zeroSet(bool);
+    void tareSet(bool);
 
 private slots:
     void messageTimedout();
